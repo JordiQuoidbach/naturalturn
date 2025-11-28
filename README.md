@@ -1,11 +1,11 @@
 # naturalturn
 
-R package implementation of the NaturalTurn algorithm for analyzing conversational transcripts.
+R package implementation of Cooney & Reece (2025)'s NaturalTurn algorithm for analyzing conversational transcripts.
 
 ## Installation
 
 ```r
-devtools::install_github("JordiQuoidbach/naturalturn")
+devtools::install_github("JordiQuoidbach/naturalturn", subdir = "naturalturn")
 ```
 
 ## Documentation

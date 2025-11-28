@@ -39,7 +39,7 @@
 #'   Overlaps between different speakers are preserved (not collapsed).
 #'
 #'   This is part of the NaturalTurn algorithm implementation. See
-#'   \code{\link{collapse_turns_natural_wide}} for the complete algorithm.
+#'   \code{\link{natural_turn_transcript}} for the complete algorithm.
 #'
 #' @examples
 #' \dontrun{
@@ -58,7 +58,7 @@
 #' @importFrom dplyr arrange mutate lag filter group_by summarise first n bind_rows
 #' @importFrom rlang sym
 #' @importFrom stringr str_count str_detect fixed
-#' @export
+#' @keywords internal
 collapse_turns_preserving_overlaps <- function(transcript_df,
                                                max_pause = 1.5,
                                                speaker_col = "speaker",

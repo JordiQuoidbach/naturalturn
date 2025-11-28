@@ -4,7 +4,7 @@
 # Process multiple conversations from a CSV file
 ################################################################################
 
-#' Process Multiple Conversations in Wide Format
+#' Process Batch of Conversations with NaturalTurn Algorithm
 #'
 #' Processes multiple conversations from a CSV file, applying the NaturalTurn
 #' algorithm to each conversation separately and combining results.
@@ -24,6 +24,13 @@
 #'   considered an interruption. Default: 6.0.
 #' @param interruption_lag_duration_min Minimum duration (seconds) of the
 #'   previous turn for current turn to be an interruption. Default: 1.0.
+#' @param conversation_id_col Name of column containing conversation identifier.
+#'   Default: auto-detects "conversation_id" or "nego_id".
+#' @param speaker_col Name of column containing speaker identifier.
+#'   Default: auto-detects "email" or "role".
+#' @param text_col Name of column containing utterance text. Default: "text".
+#' @param start_col Name of column containing start time in seconds. Default: "time.s".
+#' @param stop_col Name of column containing stop time in seconds. Default: "time.e".
 #'
 #' @return Data frame with processed turns for all conversations. Also saves
 #'   results to CSV (and RDS) if \code{output_csv} is provided.
@@ -71,7 +78,7 @@
 #' @examples
 #' \dontrun{
 #' # Process all conversations in a CSV file
-#' result <- process_batch_wide(
+#' result <- natural_turn_batch(
 #'   input_csv = "transcripts.csv",
 #'   output_csv = "transcripts_processed.csv",
 #'   max_pause = 1.5,
@@ -84,22 +91,48 @@
 #' @importFrom readr read_csv write_csv
 #' @importFrom rlang sym
 #' @export
-process_batch_wide <- function(input_csv,
+natural_turn_batch <- function(input_csv,
                                          output_csv = NULL,
                                          max_pause = 1.5,
                                          backchannel_word_max = 3,
                                          backchannel_proportion = 0.5,
                                          interruption_duration_min = 6.0,
-                                         interruption_lag_duration_min = 1.0) {
+                                         interruption_lag_duration_min = 1.0,
+                                         conversation_id_col = NULL,
+                                         speaker_col = NULL,
+                                         text_col = "text",
+                                         start_col = "time.s",
+                                         stop_col = "time.e") {
 
   cat(sprintf("Reading %s...\n", input_csv))
   df <- readr::read_csv(input_csv, show_col_types = FALSE)
 
-  # Support both conversation_id and nego_id for backward compatibility
-  conv_id_col <- if ("conversation_id" %in% names(df)) "conversation_id" else "nego_id"
+  # Auto-detect conversation_id column if not specified
+  if (is.null(conversation_id_col)) {
+    conv_id_col <- if ("conversation_id" %in% names(df)) "conversation_id" else "nego_id"
+  } else {
+    conv_id_col <- conversation_id_col
+  }
   
   if (!conv_id_col %in% names(df)) {
-    stop("Input CSV must contain either 'conversation_id' or 'nego_id' column")
+    stop(sprintf("Column '%s' not found. Available columns: %s", 
+                 conv_id_col, paste(names(df), collapse = ", ")))
+  }
+  
+  # Auto-detect speaker column if not specified
+  if (is.null(speaker_col)) {
+    speaker_col_auto <- if ("email" %in% names(df)) "email" else if ("speaker" %in% names(df)) "speaker" else "role"
+  } else {
+    speaker_col_auto <- speaker_col
+  }
+  
+  # Validate required columns
+  required_cols <- c(conv_id_col, speaker_col_auto, text_col, start_col, stop_col)
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0) {
+    stop(sprintf("Missing required columns: %s\nAvailable columns: %s", 
+                 paste(missing_cols, collapse = ", "),
+                 paste(names(df), collapse = ", ")))
   }
 
   conv_ids <- df %>%
@@ -120,27 +153,26 @@ process_batch_wide <- function(input_csv,
 
     conv_data <- df %>%
       dplyr::filter(!!rlang::sym(conv_id_col) == !!conv_id) %>%
-      dplyr::filter(!is.na(text), !is.na(time.s), !is.na(time.e))
+      dplyr::filter(!is.na(!!rlang::sym(text_col)), 
+                    !is.na(!!rlang::sym(start_col)), 
+                    !is.na(!!rlang::sym(stop_col)))
 
     if (nrow(conv_data) == 0) next
 
     tryCatch({
       original_turns <- nrow(conv_data)
 
-      # Determine speaker column - prefer email over role
-      speaker_col <- if ("email" %in% names(conv_data)) "email" else "role"
-
-      wide_result <- collapse_turns_natural_wide(
+      wide_result <- natural_turn_transcript(
         conv_data,
         max_pause = max_pause,
         backchannel_word_max = backchannel_word_max,
         backchannel_proportion = backchannel_proportion,
         interruption_duration_min = interruption_duration_min,
         interruption_lag_duration_min = interruption_lag_duration_min,
-        speaker_col = speaker_col,
-        text_col = "text",
-        start_col = "time.s",
-        stop_col = "time.e"
+        speaker_col = speaker_col_auto,
+        text_col = text_col,
+        start_col = start_col,
+        stop_col = stop_col
       )
 
       primary_turns <- nrow(wide_result)
@@ -152,7 +184,7 @@ process_batch_wide <- function(input_csv,
 
       # Add ALL metadata columns from original data (constant per conversation)
       # Exclude the columns we've already processed
-      exclude_cols <- c("text", "time.s", "time.e", speaker_col, "speech_turn")
+      exclude_cols <- c(text_col, start_col, stop_col, speaker_col_auto, "speech_turn")
       metadata_cols <- setdiff(names(conv_data), exclude_cols)
 
       # Add each metadata column (take first value since constant per conversation)
@@ -161,7 +193,7 @@ process_batch_wide <- function(input_csv,
       }
 
       # If email was used as speaker, also keep role as metadata
-      if (speaker_col == "email" && "role" %in% names(conv_data)) {
+      if (speaker_col_auto == "email" && "role" %in% names(conv_data)) {
         # Map each speaker (email) back to their role
         # Create email-to-role mapping
         email_role_map <- conv_data %>%

@@ -4,7 +4,7 @@
 # Main function to collapse turns into wide format
 ################################################################################
 
-#' Collapse Turns into Natural Turn Wide Format
+#' Process Transcript with NaturalTurn Algorithm
 #'
 #' Main function implementing the NaturalTurn algorithm. Collapses short pauses
 #' within the same speaker, classifies turns as primary/secondary/backchannel,
@@ -68,13 +68,13 @@
 #'   time.e = c(1.0, 2.0, 2.5, 4.0, 4.2)
 #' )
 #'
-#' # Collapse turns
-#' wide_result <- collapse_turns_natural_wide(transcript, max_pause = 1.5)
+#' # Process transcript
+#' wide_result <- natural_turn_transcript(transcript, max_pause = 1.5)
 #' }
 #'
 #' @importFrom dplyr arrange mutate lag group_by summarise first select any_of
 #' @export
-collapse_turns_natural_wide <- function(transcript_df,
+natural_turn_transcript <- function(transcript_df,
                                        max_pause = 1.5,
                                        backchannel_word_max = 3,
                                        backchannel_proportion = 0.5,
@@ -84,6 +84,23 @@ collapse_turns_natural_wide <- function(transcript_df,
                                        text_col = "text",
                                        start_col = "time.s",
                                        stop_col = "time.e") {
+
+
+  # Input validation
+  if (!is.data.frame(transcript_df)) {
+    stop("transcript_df must be a data frame")
+  }
+  
+  required_cols <- c(speaker_col, text_col, start_col, stop_col)
+  missing_cols <- setdiff(required_cols, names(transcript_df))
+  if (length(missing_cols) > 0) {
+    stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
+  }
+  
+  if (nrow(transcript_df) == 0) {
+    warning("transcript_df is empty, returning empty data frame")
+    return(data.frame())
+  }
 
   # Step 1: Collapse short pauses (but preserve overlaps)
   collapsed_df <- collapse_turns_preserving_overlaps(

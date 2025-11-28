@@ -15,8 +15,8 @@ The package implements:
 ## Installation
 
 ```r
-# Install from source
-devtools::install("naturalturn")
+# Install from GitHub
+devtools::install_github("JordiQuoidbach/naturalturn", subdir = "naturalturn")
 ```
 
 ## Quick Start
@@ -32,10 +32,10 @@ transcript <- data.frame(
   time.e = c(1.0, 2.0, 2.5, 4.0, 4.2)
 )
 
-result <- collapse_turns_natural_wide(transcript, max_pause = 1.5)
+result <- natural_turn_transcript(transcript, max_pause = 1.5)
 
 # Process multiple conversations from a CSV file
-result <- process_batch_wide(
+result <- natural_turn_batch(
   input_csv = "transcripts.csv",
   output_csv = "transcripts_processed.csv",
   max_pause = 1.5,
@@ -46,9 +46,8 @@ result <- process_batch_wide(
 
 ## Main Functions
 
-- `collapse_turns_natural_wide()`: Main function to collapse turns into wide format
-- `process_batch_wide()`: Batch process multiple conversations from a CSV file
-- `collapse_turns_preserving_overlaps()`: Core function to collapse short pauses while preserving overlaps
+- `natural_turn_transcript()`: Process a single transcript with NaturalTurn algorithm (complete pipeline)
+- `natural_turn_batch()`: Batch process multiple conversations from a CSV file
 
 ## Parameters
 

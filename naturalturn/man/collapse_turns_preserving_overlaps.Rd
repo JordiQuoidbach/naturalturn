@@ -54,7 +54,7 @@ This function processes each speaker separately, identifying groups
   Overlaps between different speakers are preserved (not collapsed).
 
   This is part of the NaturalTurn algorithm implementation. See
-  \code{\link{collapse_turns_natural_wide}} for the complete algorithm.
+  \code{\link{natural_turn_transcript}} for the complete algorithm.
 }
 \examples{
 \dontrun{
@@ -71,3 +71,4 @@ collapsed <- collapse_turns_preserving_overlaps(transcript, max_pause = 1.5)
 }
 
 }
+\keyword{internal}
