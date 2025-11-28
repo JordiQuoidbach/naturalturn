@@ -1,7 +1,42 @@
-transcription/__pycache__/
-data/aws-2024-candor-raw-api/
-data/aws-2024-candor-raw-api.zip
-.DS_Store
-transcription/.DS_Store
+# R package build artifacts
+.Rbuildignore
+.Rhistory
+.Rapp.history
+*.Rproj
+.Rproj.user/
+*.Rproj.user
+
+# Data files
+*.csv
+*.rds
+*.xlsx
+*.xls
+
+# Python files (not part of R package)
+*.py
+__pycache__/
+*.pyc
+
+# Jupyter notebooks
+*.ipynb
 .ipynb_checkpoints/
-transcription/.ipynb_checkpoints/
+
+# System files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Transcription data
+transcription/
+data/
+
+# Scripts (not part of package)
+*.R
+!naturalturn/**/*.R
+
+# Documentation (keep only package README)
+LISTENER_LISTS_USAGE_GUIDE.md
+RUN_*.R
+computeInterruption.R
+process_web_transcripts*.py
