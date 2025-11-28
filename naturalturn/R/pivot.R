@@ -189,9 +189,8 @@ pivot_to_wide_format <- function(df,
       n_words_listener_list,
       n_questions_listener_list,
       ends_with_question_listener_list
-    ) %>%
-    # Remove temporary columns
-    dplyr::select(-lag_duration, -lag_speaker)
+    )
+    # Note: lag_duration and lag_speaker are not selected above, so no need to remove them
 
   return(wide_df)
 }
