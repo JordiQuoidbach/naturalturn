@@ -12,8 +12,8 @@ The NaturalTurn algorithm identifies primary turns and overlapping speech (backc
 
 ### Key Features
 - **NaturalTurn algorithm** (Cooney & Reece, 2025): Turn segmentation and backchannel detection
-- **Interruption detection** (Di Stasi et al., 2024): Flags turns that interrupt the previous speaker
-- **Within-speech pause tracking** (Di Stasi et al., 2024): Tracks long pauses within a speaker's turn
+- **Interruption detection** (Di Stasi, Templeton, & Quoidbach, 2024): Flags turns that interrupt the previous speaker
+- **Within-speech pause tracking** (Di Stasi, Templeton, & Quoidbach, 2024): Tracks long pauses within a speaker's turn
 
 ## Installation
 
