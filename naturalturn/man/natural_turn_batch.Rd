@@ -5,7 +5,7 @@
 \title{Process Batch of Conversations with NaturalTurn Algorithm}
 \usage{
 natural_turn_batch(
-  input_csv,
+  transcripts_df,
   output_csv = NULL,
   max_pause = 1.5,
   backchannel_word_max = 3,
@@ -20,12 +20,12 @@ natural_turn_batch(
 )
 }
 \arguments{
-\item{input_csv}{Path to input CSV file containing transcript data. Must
-contain a \code{conversation_id} column (or \code{nego_id} for backward
-compatibility) to identify different conversations.}
+\item{transcripts_df}{Data frame containing transcript data for multiple
+conversations. Must contain a column to identify different conversations
+(e.g., \code{conversation_id}).}
 
-\item{output_csv}{Path to output CSV file. If \code{NULL}, results are not
-saved to disk. Default: \code{NULL}.}
+\item{output_csv}{Optional path to save results as CSV file. If \code{NULL},
+results are only returned (not saved to disk). Default: \code{NULL}.}
 
 \item{max_pause}{Maximum pause (seconds) between consecutive segments from
 the same speaker to be merged. Default: 1.5.}
@@ -46,7 +46,7 @@ previous turn for current turn to be an interruption. Default: 1.0.}
 Default: auto-detects "conversation_id" or "nego_id".}
 
 \item{speaker_col}{Name of column containing speaker identifier.
-Default: auto-detects "email" or "role".}
+Default: auto-detects "email", "speaker", or "role".}
 
 \item{text_col}{Name of column containing utterance text. Default: "text".}
 
@@ -59,15 +59,14 @@ Data frame with processed turns for all conversations. Also saves
   results to CSV (and RDS) if \code{output_csv} is provided.
 }
 \description{
-Processes multiple conversations from a CSV file, applying the NaturalTurn
+Processes multiple conversations from a data frame, applying the NaturalTurn
 algorithm to each conversation separately and combining results.
 }
 \details{
 This function:
   \itemize{
-    \item Reads the input CSV file
-    \item Groups by \code{conversation_id} (or \code{nego_id}) and processes each conversation separately
-    \item Automatically detects speaker column (\code{email} preferred over \code{role})
+    \item Groups by \code{conversation_id_col} and processes each conversation separately
+    \item Automatically detects speaker column (\code{email} preferred over \code{speaker} or \code{role})
     \item Preserves all metadata columns from the original data
     \item Combines results and optionally saves to CSV and RDS formats
   }
@@ -94,13 +93,24 @@ This function:
 
 \examples{
 \dontrun{
-# Process all conversations in a CSV file
+# Load your transcripts data frame
+transcripts <- read.csv("transcripts.csv")
+
+# Process all conversations
 result <- natural_turn_batch(
-  input_csv = "transcripts.csv",
-  output_csv = "transcripts_processed.csv",
-  max_pause = 1.5,
-  backchannel_word_max = 3,
-  backchannel_proportion = 0.5
+  transcripts,
+  conversation_id_col = "conversation_id",
+  speaker_col = "speaker",
+  text_col = "text",
+  start_col = "start_time",
+  stop_col = "end_time"
+)
+
+# Optionally save to CSV
+result <- natural_turn_batch(
+  transcripts,
+  output_csv = "processed_transcripts.csv",
+  conversation_id_col = "conversation_id"
 )
 }
 

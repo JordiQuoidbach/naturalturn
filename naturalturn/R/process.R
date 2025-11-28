@@ -1,19 +1,19 @@
 ################################################################################
 # Batch Processing Function
 # 
-# Process multiple conversations from a CSV file
+# Process multiple conversations from a data frame
 ################################################################################
 
 #' Process Batch of Conversations with NaturalTurn Algorithm
 #'
-#' Processes multiple conversations from a CSV file, applying the NaturalTurn
+#' Processes multiple conversations from a data frame, applying the NaturalTurn
 #' algorithm to each conversation separately and combining results.
 #'
-#' @param input_csv Path to input CSV file containing transcript data. Must
-#'   contain a \code{conversation_id} column (or \code{nego_id} for backward
-#'   compatibility) to identify different conversations.
-#' @param output_csv Path to output CSV file. If \code{NULL}, results are not
-#'   saved to disk. Default: \code{NULL}.
+#' @param transcripts_df Data frame containing transcript data for multiple
+#'   conversations. Must contain a column to identify different conversations
+#'   (e.g., \code{conversation_id}).
+#' @param output_csv Optional path to save results as CSV file. If \code{NULL},
+#'   results are only returned (not saved to disk). Default: \code{NULL}.
 #' @param max_pause Maximum pause (seconds) between consecutive segments from
 #'   the same speaker to be merged. Default: 1.5.
 #' @param backchannel_word_max Maximum word count for backchannel classification.
@@ -27,7 +27,7 @@
 #' @param conversation_id_col Name of column containing conversation identifier.
 #'   Default: auto-detects "conversation_id" or "nego_id".
 #' @param speaker_col Name of column containing speaker identifier.
-#'   Default: auto-detects "email" or "role".
+#'   Default: auto-detects "email", "speaker", or "role".
 #' @param text_col Name of column containing utterance text. Default: "text".
 #' @param start_col Name of column containing start time in seconds. Default: "time.s".
 #' @param stop_col Name of column containing stop time in seconds. Default: "time.e".
@@ -37,9 +37,8 @@
 #'
 #' @details This function:
 #'   \itemize{
-#'     \item Reads the input CSV file
-#'     \item Groups by \code{conversation_id} (or \code{nego_id}) and processes each conversation separately
-#'     \item Automatically detects speaker column (\code{email} preferred over \code{role})
+#'     \item Groups by \code{conversation_id_col} and processes each conversation separately
+#'     \item Automatically detects speaker column (\code{email} preferred over \code{speaker} or \code{role})
 #'     \item Preserves all metadata columns from the original data
 #'     \item Combines results and optionally saves to CSV and RDS formats
 #'   }
@@ -77,39 +76,61 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Process all conversations in a CSV file
+#' # Load your transcripts data frame
+#' transcripts <- read.csv("transcripts.csv")
+#'
+#' # Process all conversations
 #' result <- natural_turn_batch(
-#'   input_csv = "transcripts.csv",
-#'   output_csv = "transcripts_processed.csv",
-#'   max_pause = 1.5,
-#'   backchannel_word_max = 3,
-#'   backchannel_proportion = 0.5
+#'   transcripts,
+#'   conversation_id_col = "conversation_id",
+#'   speaker_col = "speaker",
+#'   text_col = "text",
+#'   start_col = "start_time",
+#'   stop_col = "end_time"
+#' )
+#'
+#' # Optionally save to CSV
+#' result <- natural_turn_batch(
+#'   transcripts,
+#'   output_csv = "processed_transcripts.csv",
+#'   conversation_id_col = "conversation_id"
 #' )
 #' }
 #'
 #' @importFrom dplyr filter pull mutate row_number select distinct left_join coalesce bind_rows first
-#' @importFrom readr read_csv write_csv
+#' @importFrom readr write_csv
 #' @importFrom rlang sym
 #' @export
-natural_turn_batch <- function(input_csv,
-                                         output_csv = NULL,
-                                         max_pause = 1.5,
-                                         backchannel_word_max = 3,
-                                         backchannel_proportion = 0.5,
-                                         interruption_duration_min = 6.0,
-                                         interruption_lag_duration_min = 1.0,
-                                         conversation_id_col = NULL,
-                                         speaker_col = NULL,
-                                         text_col = "text",
-                                         start_col = "time.s",
-                                         stop_col = "time.e") {
+natural_turn_batch <- function(transcripts_df,
+                               output_csv = NULL,
+                               max_pause = 1.5,
+                               backchannel_word_max = 3,
+                               backchannel_proportion = 0.5,
+                               interruption_duration_min = 6.0,
+                               interruption_lag_duration_min = 1.0,
+                               conversation_id_col = NULL,
+                               speaker_col = NULL,
+                               text_col = "text",
+                               start_col = "time.s",
+                               stop_col = "time.e") {
 
-  cat(sprintf("Reading %s...\n", input_csv))
-  df <- readr::read_csv(input_csv, show_col_types = FALSE)
+  # Input validation
+ if (!is.data.frame(transcripts_df)) {
+    stop("transcripts_df must be a data frame")
+  }
+  
+  df <- transcripts_df
 
   # Auto-detect conversation_id column if not specified
   if (is.null(conversation_id_col)) {
-    conv_id_col <- if ("conversation_id" %in% names(df)) "conversation_id" else "nego_id"
+    if ("conversation_id" %in% names(df)) {
+      conv_id_col <- "conversation_id"
+    } else if ("nego_id" %in% names(df)) {
+      conv_id_col <- "nego_id"
+    } else {
+      stop("Could not auto-detect conversation ID column. Please specify 'conversation_id_col'.\nAvailable columns: ", 
+           paste(names(df), collapse = ", "))
+    }
   } else {
     conv_id_col <- conversation_id_col
   }
@@ -121,7 +142,16 @@ natural_turn_batch <- function(input_csv,
   
   # Auto-detect speaker column if not specified
   if (is.null(speaker_col)) {
-    speaker_col_auto <- if ("email" %in% names(df)) "email" else if ("speaker" %in% names(df)) "speaker" else "role"
+    if ("email" %in% names(df)) {
+      speaker_col_auto <- "email"
+    } else if ("speaker" %in% names(df)) {
+      speaker_col_auto <- "speaker"
+    } else if ("role" %in% names(df)) {
+      speaker_col_auto <- "role"
+    } else {
+      stop("Could not auto-detect speaker column. Please specify 'speaker_col'.\nAvailable columns: ", 
+           paste(names(df), collapse = ", "))
+    }
   } else {
     speaker_col_auto <- speaker_col
   }
@@ -292,4 +322,3 @@ natural_turn_batch <- function(input_csv,
 
   return(final_df)
 }
-

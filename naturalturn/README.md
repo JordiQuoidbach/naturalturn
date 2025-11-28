@@ -55,16 +55,28 @@ result <- natural_turn_transcript(
 
 ### Processing Multiple Conversations (Batch)
 
-Use `natural_turn_batch()` to process a CSV file with multiple conversations:
+Use `natural_turn_batch()` to process a data frame with multiple conversations:
 
 ```r
+# Load your data
+transcripts <- read.csv("transcripts.csv")
+
+# Process all conversations
 result <- natural_turn_batch(
-  input_csv = "transcripts.csv",
-  output_csv = "transcripts_processed.csv"
+  transcripts,
+  conversation_id_col = "conversation_id",
+  speaker_col = "speaker"
+)
+
+# Optionally save to CSV
+result <- natural_turn_batch(
+  transcripts,
+  output_csv = "transcripts_processed.csv",
+  conversation_id_col = "conversation_id"
 )
 ```
 
-Your CSV must contain a column to identify different conversations (e.g., `conversation_id` or `nego_id`).
+Your data frame must contain a column to identify different conversations (e.g., `conversation_id` or `nego_id`).
 
 ## Parameters
 
