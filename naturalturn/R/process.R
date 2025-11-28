@@ -169,15 +169,22 @@ natural_turn_batch <- function(transcripts_df,
       wide_result <- wide_result %>%
         dplyr::mutate(turn_id = dplyr::row_number())
 
-      # Add ALL metadata columns from original data (constant per conversation)
-      # Exclude the columns we've already processed
-      exclude_cols <- c(text_col, start_col, stop_col, speaker_id_col, "speech_turn")
+      # Add metadata columns from original data
+      # Some metadata is speaker-level (varies by speaker), some is conversation-level
+      # We join speaker-level metadata by speaker to preserve correct values
+      
+      exclude_cols <- c(text_col, start_col, stop_col, "speech_turn")
       metadata_cols <- setdiff(names(conv_data), exclude_cols)
-
-      # Add each metadata column (take first value since constant per conversation)
-      for (col in metadata_cols) {
-        wide_result[[col]] <- dplyr::first(conv_data[[col]])
-      }
+      
+      # Get unique speaker-metadata combinations from original data
+      # This preserves speaker-specific metadata (like role, nationality, gender, etc.)
+      speaker_metadata <- conv_data %>%
+        dplyr::select(dplyr::all_of(c(speaker_id_col, metadata_cols))) %>%
+        dplyr::distinct(!!rlang::sym(speaker_id_col), .keep_all = TRUE)
+      
+      # Join speaker-level metadata based on speaker
+      wide_result <- wide_result %>%
+        dplyr::left_join(speaker_metadata, by = stats::setNames(speaker_id_col, "speaker"))
 
       if (i <= 5 || i %% 50 == 0) {
         cat(sprintf("  %d/%d: %d turns -> %d primary turns (%d with overlap)\n",
