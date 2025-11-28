@@ -3,7 +3,7 @@ Type: Package
 Title: Natural Turn Algorithm for Conversation Analysis
 Version: 0.1.0
 Authors@R: person("Jordi", "Quoidbach", email = "jquoidbach@gmail.com", role = c("aut", "cre"))
-Description: R implementation of the NaturalTurn algorithm for analyzing conversational transcripts. This package implements the NaturalTurn method by Cooney & Reece (2025) to identify primary turns and overlapping speech (backchannels/secondary turns), collapsing short pauses within the same speaker while preserving overlaps. It also implements interruption detection and within-speech pause tracking algorithms from Di Stasi et al. (2024). Outputs data in wide format with one row per primary turn and listener overlaps in columns. This is an R port of the Python companion repository at https://github.com/betterup/natural-turn-transcription.
+Description: R implementation of the NaturalTurn algorithm (Cooney & Reece, 2025) for segmenting conversational transcripts into psychologically meaningful turns. The package identifies primary turns and overlapping speech (backchannels/secondary), collapsing short pauses within the same speaker while preserving overlaps. Additionally, it integrates interruption detection and within-speech pause tracking algorithms from Di Stasi, Templeton, & Quoidbach (2024). Outputs data in wide format with one row per primary turn and listener overlaps in columns. This is an R port of the Python companion repository at <https://github.com/betterup/natural-turn-transcription>.
 License: MIT + file LICENSE
 URL: https://github.com/JordiQuoidbach/naturalturn,
     https://doi.org/10.1038/s41598-025-24381-1
