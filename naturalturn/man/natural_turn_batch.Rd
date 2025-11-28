@@ -6,23 +6,34 @@
 \usage{
 natural_turn_batch(
   transcripts_df,
+  conversation_id_col,
+  speaker_id_col,
+  text_col = "text",
+  start_col = "start",
+  stop_col = "stop",
   output_csv = NULL,
   max_pause = 1.5,
   backchannel_word_max = 3,
   backchannel_proportion = 0.5,
   interruption_duration_min = 6,
-  interruption_lag_duration_min = 1,
-  conversation_id_col = NULL,
-  speaker_col = NULL,
-  text_col = "text",
-  start_col = "time.s",
-  stop_col = "time.e"
+  interruption_lag_duration_min = 1
 )
 }
 \arguments{
 \item{transcripts_df}{Data frame containing transcript data for multiple
-conversations. Must contain a column to identify different conversations
-(e.g., \code{conversation_id}).}
+conversations.}
+
+\item{conversation_id_col}{Name of column containing conversation identifier
+(e.g., "conversation_id", "session_id"). Required.}
+
+\item{speaker_id_col}{Name of column containing speaker identifier
+(e.g., "speaker", "participant_id"). Required.}
+
+\item{text_col}{Name of column containing utterance text. Default: "text".}
+
+\item{start_col}{Name of column containing start time in seconds. Default: "start".}
+
+\item{stop_col}{Name of column containing stop time in seconds. Default: "stop".}
 
 \item{output_csv}{Optional path to save results as CSV file. If \code{NULL},
 results are only returned (not saved to disk). Default: \code{NULL}.}
@@ -41,18 +52,6 @@ considered an interruption. Default: 6.0.}
 
 \item{interruption_lag_duration_min}{Minimum duration (seconds) of the
 previous turn for current turn to be an interruption. Default: 1.0.}
-
-\item{conversation_id_col}{Name of column containing conversation identifier.
-Default: auto-detects "conversation_id" or "nego_id".}
-
-\item{speaker_col}{Name of column containing speaker identifier.
-Default: auto-detects "email", "speaker", or "role".}
-
-\item{text_col}{Name of column containing utterance text. Default: "text".}
-
-\item{start_col}{Name of column containing start time in seconds. Default: "time.s".}
-
-\item{stop_col}{Name of column containing stop time in seconds. Default: "time.e".}
 }
 \value{
 Data frame with processed turns for all conversations. Also saves
@@ -66,7 +65,6 @@ algorithm to each conversation separately and combining results.
 This function:
   \itemize{
     \item Groups by \code{conversation_id_col} and processes each conversation separately
-    \item Automatically detects speaker column (\code{email} preferred over \code{speaker} or \code{role})
     \item Preserves all metadata columns from the original data
     \item Combines results and optionally saves to CSV and RDS formats
   }
@@ -74,43 +72,27 @@ This function:
   The RDS format preserves list columns (e.g., \code{utterance_listener_list})
   in their native R format, while CSV converts them to JSON-style strings.
 }
-\section{Parameter Guide}{
-
-\describe{
-  \item{\code{max_pause}}{Maximum pause between consecutive speech segments
-    from the SAME speaker to be merged into one turn. Pauses > max_pause
-    WITHIN a merged turn are tracked in \code{internal_pause_*} columns.}
-  \item{\code{backchannel_word_max}}{Maximum word count for an overlapping
-    utterance to be considered a "backchannel" (vs "secondary").}
-  \item{\code{backchannel_proportion}}{Minimum proportion of words that must
-    be backchannel cues for a short utterance to be classified as backchannel.}
-  \item{\code{interruption_duration_min}}{Minimum duration for a turn to be
-    considered an interruption (Farley 2008 criteria).}
-  \item{\code{interruption_lag_duration_min}}{Minimum duration of the previous
-    turn for current turn to be an interruption.}
-}
-}
-
 \examples{
 \dontrun{
 # Load your transcripts data frame
 transcripts <- read.csv("transcripts.csv")
 
-# Process all conversations
+# Process all conversations (required parameters)
 result <- natural_turn_batch(
   transcripts,
   conversation_id_col = "conversation_id",
-  speaker_col = "speaker",
+  speaker_id_col = "speaker",
   text_col = "text",
-  start_col = "start_time",
-  stop_col = "end_time"
+  start_col = "start",
+  stop_col = "stop"
 )
 
 # Optionally save to CSV
 result <- natural_turn_batch(
   transcripts,
-  output_csv = "processed_transcripts.csv",
-  conversation_id_col = "conversation_id"
+  conversation_id_col = "conversation_id",
+  speaker_id_col = "speaker",
+  output_csv = "processed_transcripts.csv"
 )
 }
 

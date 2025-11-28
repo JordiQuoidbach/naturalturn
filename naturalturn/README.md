@@ -35,16 +35,20 @@ library(naturalturn)
 transcript <- data.frame(
   speaker = c("A", "A", "B", "A", "B"),
   text = c("Hello", "there", "Hi", "How are you", "Good"),
-  time.s = c(0.0, 1.2, 1.5, 3.0, 3.5),
-  time.e = c(1.0, 2.0, 2.5, 4.0, 4.2)
+  start = c(0.0, 1.2, 1.5, 3.0, 3.5),
+  stop = c(1.0, 2.0, 2.5, 4.0, 4.2)
 )
 
-# Process with default parameters
+# Process with default column names (speaker, text, start, stop)
 result <- natural_turn_transcript(transcript)
 
-# Or customize parameters
+# Or specify your column names
 result <- natural_turn_transcript(
   transcript,
+  speaker_id_col = "speaker",
+  text_col = "text",
+  start_col = "start",
+  stop_col = "stop",
   max_pause = 1.5,
   backchannel_word_max = 3,
   backchannel_proportion = 0.5,
@@ -61,22 +65,24 @@ Use `natural_turn_batch()` to process a data frame with multiple conversations:
 # Load your data
 transcripts <- read.csv("transcripts.csv")
 
-# Process all conversations
+# Process all conversations (required: conversation_id_col and speaker_id_col)
 result <- natural_turn_batch(
   transcripts,
   conversation_id_col = "conversation_id",
-  speaker_col = "speaker"
+  speaker_id_col = "speaker",
+  text_col = "text",
+  start_col = "start",
+  stop_col = "stop"
 )
 
 # Optionally save to CSV
 result <- natural_turn_batch(
   transcripts,
-  output_csv = "transcripts_processed.csv",
-  conversation_id_col = "conversation_id"
+  conversation_id_col = "conversation_id",
+  speaker_id_col = "speaker",
+  output_csv = "transcripts_processed.csv"
 )
 ```
-
-Your data frame must contain a column to identify different conversations (e.g., `conversation_id` or `nego_id`).
 
 ## Parameters
 
@@ -103,20 +109,14 @@ Your data frame must contain a column to identify different conversations (e.g.,
 
 ### Column Name Parameters
 
-For `natural_turn_transcript()`:
-
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `speaker_col` | "speaker" | Name of the column containing speaker identifiers |
-| `text_col` | "text" | Name of the column containing utterance text |
-| `start_col` | "time.s" | Name of the column containing start times (in seconds) |
-| `stop_col` | "time.e" | Name of the column containing end times (in seconds) |
-
-For `natural_turn_batch()` (additional):
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `conversation_id_col` | auto-detect | Column identifying different conversations. Auto-detects "conversation_id" or "nego_id". |
+| `conversation_id_col` | *required* | Column identifying different conversations (batch only) |
+| `speaker_id_col` | "speaker" | Column containing speaker identifiers |
+| `text_col` | "text" | Column containing utterance text |
+| `start_col` | "start" | Column containing start times (in seconds) |
+| `stop_col` | "stop" | Column containing end times (in seconds) |
+| `output_csv` | NULL | Optional path to save results as CSV (batch only) |
 
 ## Output Format
 

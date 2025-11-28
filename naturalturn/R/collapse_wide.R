@@ -13,6 +13,10 @@
 #'
 #' @param transcript_df Data frame with transcript data. Must contain columns
 #'   for speaker, text, start time, and stop time.
+#' @param speaker_id_col Name of column containing speaker identifier. Default: "speaker".
+#' @param text_col Name of column containing utterance text. Default: "text".
+#' @param start_col Name of column containing start time in seconds. Default: "start".
+#' @param stop_col Name of column containing stop time in seconds. Default: "stop".
 #' @param max_pause Maximum pause (seconds) between consecutive segments from
 #'   the same speaker to be merged into one turn. Default: 1.5.
 #' @param backchannel_word_max Maximum word count for backchannel classification.
@@ -23,10 +27,6 @@
 #'   considered an interruption. Default: 6.0.
 #' @param interruption_lag_duration_min Minimum duration (seconds) of the
 #'   previous turn for current turn to be an interruption. Default: 1.0.
-#' @param speaker_col Name of column containing speaker identifier. Default: "speaker".
-#' @param text_col Name of column containing utterance text. Default: "text".
-#' @param start_col Name of column containing start time in seconds. Default: "time.s".
-#' @param stop_col Name of column containing stop time in seconds. Default: "time.e".
 #'
 #' @return Data frame in wide format with one row per primary turn. See
 #'   \code{\link{pivot_to_wide_format}} for column descriptions.
@@ -64,34 +64,42 @@
 #' transcript <- data.frame(
 #'   speaker = c("A", "A", "B", "A", "B"),
 #'   text = c("Hello", "there", "Hi", "How are you", "Good"),
-#'   time.s = c(0.0, 1.2, 1.5, 3.0, 3.5),
-#'   time.e = c(1.0, 2.0, 2.5, 4.0, 4.2)
+#'   start = c(0.0, 1.2, 1.5, 3.0, 3.5),
+#'   stop = c(1.0, 2.0, 2.5, 4.0, 4.2)
 #' )
 #'
-#' # Process transcript
-#' wide_result <- natural_turn_transcript(transcript, max_pause = 1.5)
+#' # Process transcript with default column names
+#' wide_result <- natural_turn_transcript(transcript)
+#'
+#' # Or specify custom column names
+#' wide_result <- natural_turn_transcript(
+#'   transcript,
+#'   speaker_id_col = "speaker",
+#'   text_col = "text",
+#'   start_col = "start",
+#'   stop_col = "stop"
+#' )
 #' }
 #'
 #' @importFrom dplyr arrange mutate lag group_by summarise first select any_of
 #' @export
 natural_turn_transcript <- function(transcript_df,
-                                       max_pause = 1.5,
-                                       backchannel_word_max = 3,
-                                       backchannel_proportion = 0.5,
-                                       interruption_duration_min = 6.0,
-                                       interruption_lag_duration_min = 1.0,
-                                       speaker_col = "speaker",
-                                       text_col = "text",
-                                       start_col = "time.s",
-                                       stop_col = "time.e") {
-
+                                    speaker_id_col = "speaker",
+                                    text_col = "text",
+                                    start_col = "start",
+                                    stop_col = "stop",
+                                    max_pause = 1.5,
+                                    backchannel_word_max = 3,
+                                    backchannel_proportion = 0.5,
+                                    interruption_duration_min = 6.0,
+                                    interruption_lag_duration_min = 1.0) {
 
   # Input validation
   if (!is.data.frame(transcript_df)) {
     stop("transcript_df must be a data frame")
   }
   
-  required_cols <- c(speaker_col, text_col, start_col, stop_col)
+  required_cols <- c(speaker_id_col, text_col, start_col, stop_col)
   missing_cols <- setdiff(required_cols, names(transcript_df))
   if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
@@ -106,7 +114,7 @@ natural_turn_transcript <- function(transcript_df,
   collapsed_df <- collapse_turns_preserving_overlaps(
     transcript_df,
     max_pause = max_pause,
-    speaker_col = speaker_col,
+    speaker_id_col = speaker_id_col,
     text_col = text_col,
     start_col = start_col,
     stop_col = stop_col

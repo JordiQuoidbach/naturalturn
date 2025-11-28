@@ -7,10 +7,10 @@
 collapse_turns_preserving_overlaps(
   transcript_df,
   max_pause = 1.5,
-  speaker_col = "speaker",
+  speaker_id_col = "speaker",
   text_col = "text",
-  start_col = "time.s",
-  stop_col = "time.e"
+  start_col = "start",
+  stop_col = "stop"
 )
 }
 \arguments{
@@ -20,13 +20,13 @@ for speaker, text, start time, and stop time.}
 \item{max_pause}{Maximum pause (in seconds) between consecutive segments from
 the same speaker to be merged into one turn. Default: 1.5 seconds.}
 
-\item{speaker_col}{Name of column containing speaker identifier. Default: "speaker".}
+\item{speaker_id_col}{Name of column containing speaker identifier. Default: "speaker".}
 
 \item{text_col}{Name of column containing utterance text. Default: "text".}
 
-\item{start_col}{Name of column containing start time in seconds. Default: "time.s".}
+\item{start_col}{Name of column containing start time in seconds. Default: "start".}
 
-\item{stop_col}{Name of column containing stop time in seconds. Default: "time.e".}
+\item{stop_col}{Name of column containing stop time in seconds. Default: "stop".}
 }
 \value{
 Data frame with collapsed turns, including columns:
@@ -62,8 +62,8 @@ This function processes each speaker separately, identifying groups
 transcript <- data.frame(
   speaker = c("A", "A", "B", "A"),
   text = c("Hello", "there", "Hi", "How are you"),
-  time.s = c(0.0, 1.2, 1.5, 3.0),
-  time.e = c(1.0, 2.0, 2.5, 4.0)
+  start = c(0.0, 1.2, 1.5, 3.0),
+  stop = c(1.0, 2.0, 2.5, 4.0)
 )
 
 # Collapse pauses < 1.5 seconds

@@ -15,10 +15,10 @@
 #'   for speaker, text, start time, and stop time.
 #' @param max_pause Maximum pause (in seconds) between consecutive segments from
 #'   the same speaker to be merged into one turn. Default: 1.5 seconds.
-#' @param speaker_col Name of column containing speaker identifier. Default: "speaker".
+#' @param speaker_id_col Name of column containing speaker identifier. Default: "speaker".
 #' @param text_col Name of column containing utterance text. Default: "text".
-#' @param start_col Name of column containing start time in seconds. Default: "time.s".
-#' @param stop_col Name of column containing stop time in seconds. Default: "time.e".
+#' @param start_col Name of column containing start time in seconds. Default: "start".
+#' @param stop_col Name of column containing stop time in seconds. Default: "stop".
 #'
 #' @return Data frame with collapsed turns, including columns:
 #'   \itemize{
@@ -47,8 +47,8 @@
 #' transcript <- data.frame(
 #'   speaker = c("A", "A", "B", "A"),
 #'   text = c("Hello", "there", "Hi", "How are you"),
-#'   time.s = c(0.0, 1.2, 1.5, 3.0),
-#'   time.e = c(1.0, 2.0, 2.5, 4.0)
+#'   start = c(0.0, 1.2, 1.5, 3.0),
+#'   stop = c(1.0, 2.0, 2.5, 4.0)
 #' )
 #'
 #' # Collapse pauses < 1.5 seconds
@@ -61,10 +61,10 @@
 #' @keywords internal
 collapse_turns_preserving_overlaps <- function(transcript_df,
                                                max_pause = 1.5,
-                                               speaker_col = "speaker",
+                                               speaker_id_col = "speaker",
                                                text_col = "text",
-                                               start_col = "time.s",
-                                               stop_col = "time.e") {
+                                               start_col = "start",
+                                               stop_col = "stop") {
 
   # Step 1: Sort by start time
   df <- transcript_df %>%
@@ -77,9 +77,9 @@ collapse_turns_preserving_overlaps <- function(transcript_df,
   # Step 2: Process each speaker separately (collapse short pauses)
   collapsed_list <- list()
 
-  for (spk in unique(df[[speaker_col]])) {
+  for (spk in unique(df[[speaker_id_col]])) {
     speaker_turns <- df %>%
-      dplyr::filter(!!rlang::sym(speaker_col) == spk) %>%
+      dplyr::filter(!!rlang::sym(speaker_id_col) == spk) %>%
       dplyr::arrange(!!rlang::sym(start_col))
 
     if (nrow(speaker_turns) == 0) next
@@ -106,7 +106,7 @@ collapse_turns_preserving_overlaps <- function(transcript_df,
     collapsed_speaker <- speaker_turns %>%
       dplyr::group_by(turn_group) %>%
       dplyr::summarise(
-        speaker = dplyr::first(!!rlang::sym(speaker_col)),
+        speaker = dplyr::first(!!rlang::sym(speaker_id_col)),
         start = min(!!rlang::sym(start_col)),
         stop = max(!!rlang::sym(stop_col)),
         utterance = paste(!!rlang::sym(text_col), collapse = " "),

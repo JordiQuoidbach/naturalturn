@@ -6,20 +6,28 @@
 \usage{
 natural_turn_transcript(
   transcript_df,
+  speaker_id_col = "speaker",
+  text_col = "text",
+  start_col = "start",
+  stop_col = "stop",
   max_pause = 1.5,
   backchannel_word_max = 3,
   backchannel_proportion = 0.5,
   interruption_duration_min = 6,
-  interruption_lag_duration_min = 1,
-  speaker_col = "speaker",
-  text_col = "text",
-  start_col = "time.s",
-  stop_col = "time.e"
+  interruption_lag_duration_min = 1
 )
 }
 \arguments{
 \item{transcript_df}{Data frame with transcript data. Must contain columns
 for speaker, text, start time, and stop time.}
+
+\item{speaker_id_col}{Name of column containing speaker identifier. Default: "speaker".}
+
+\item{text_col}{Name of column containing utterance text. Default: "text".}
+
+\item{start_col}{Name of column containing start time in seconds. Default: "start".}
+
+\item{stop_col}{Name of column containing stop time in seconds. Default: "stop".}
 
 \item{max_pause}{Maximum pause (seconds) between consecutive segments from
 the same speaker to be merged into one turn. Default: 1.5.}
@@ -35,14 +43,6 @@ considered an interruption. Default: 6.0.}
 
 \item{interruption_lag_duration_min}{Minimum duration (seconds) of the
 previous turn for current turn to be an interruption. Default: 1.0.}
-
-\item{speaker_col}{Name of column containing speaker identifier. Default: "speaker".}
-
-\item{text_col}{Name of column containing utterance text. Default: "text".}
-
-\item{start_col}{Name of column containing start time in seconds. Default: "time.s".}
-
-\item{stop_col}{Name of column containing stop time in seconds. Default: "time.e".}
 }
 \value{
 Data frame in wide format with one row per primary turn. See
@@ -75,12 +75,21 @@ This function implements the NaturalTurn algorithm by Cooney &
 transcript <- data.frame(
   speaker = c("A", "A", "B", "A", "B"),
   text = c("Hello", "there", "Hi", "How are you", "Good"),
-  time.s = c(0.0, 1.2, 1.5, 3.0, 3.5),
-  time.e = c(1.0, 2.0, 2.5, 4.0, 4.2)
+  start = c(0.0, 1.2, 1.5, 3.0, 3.5),
+  stop = c(1.0, 2.0, 2.5, 4.0, 4.2)
 )
 
-# Process transcript
-wide_result <- natural_turn_transcript(transcript, max_pause = 1.5)
+# Process transcript with default column names
+wide_result <- natural_turn_transcript(transcript)
+
+# Or specify custom column names
+wide_result <- natural_turn_transcript(
+  transcript,
+  speaker_id_col = "speaker",
+  text_col = "text",
+  start_col = "start",
+  stop_col = "stop"
+)
 }
 
 }
