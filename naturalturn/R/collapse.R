@@ -1,0 +1,134 @@
+################################################################################
+# Core Collapsing Function
+# 
+# Collapses short pauses within the same speaker while preserving overlaps
+# between different speakers.
+################################################################################
+
+#' Collapse Turns Preserving Overlaps
+#'
+#' Collapses consecutive speech segments from the same speaker when separated
+#' by pauses shorter than \code{max_pause}, while preserving overlaps between
+#' different speakers. This is the first step in the NaturalTurn algorithm.
+#'
+#' @param transcript_df Data frame with transcript data. Must contain columns
+#'   for speaker, text, start time, and stop time.
+#' @param max_pause Maximum pause (in seconds) between consecutive segments from
+#'   the same speaker to be merged into one turn. Default: 1.5 seconds.
+#' @param speaker_col Name of column containing speaker identifier. Default: "speaker".
+#' @param text_col Name of column containing utterance text. Default: "text".
+#' @param start_col Name of column containing start time in seconds. Default: "time.s".
+#' @param stop_col Name of column containing stop time in seconds. Default: "time.e".
+#'
+#' @return Data frame with collapsed turns, including columns:
+#'   \itemize{
+#'     \item \code{speaker}: Speaker identifier
+#'     \item \code{start}: Start time of turn
+#'     \item \code{stop}: Stop time of turn
+#'     \item \code{utterance}: Concatenated text from merged segments
+#'     \item \code{n_utterances_merged}: Number of original segments merged
+#'     \item \code{duration}: Turn duration (stop - start)
+#'     \item \code{pause}: Pause before this turn (gap from previous turn)
+#'     \item \code{n_words}: Word count
+#'     \item \code{n_questions}: Number of question marks
+#'     \item \code{ends_with_question}: Logical, whether turn ends with "?"
+#'   }
+#'
+#' @details This function processes each speaker separately, identifying groups
+#'   of consecutive segments with pauses < \code{max_pause} and merging them.
+#'   Overlaps between different speakers are preserved (not collapsed).
+#'
+#'   This is part of the NaturalTurn algorithm implementation. See
+#'   \code{\link{collapse_turns_natural_wide}} for the complete algorithm.
+#'
+#' @examples
+#' \dontrun{
+#' # Example transcript data
+#' transcript <- data.frame(
+#'   speaker = c("A", "A", "B", "A"),
+#'   text = c("Hello", "there", "Hi", "How are you"),
+#'   time.s = c(0.0, 1.2, 1.5, 3.0),
+#'   time.e = c(1.0, 2.0, 2.5, 4.0)
+#' )
+#'
+#' # Collapse pauses < 1.5 seconds
+#' collapsed <- collapse_turns_preserving_overlaps(transcript, max_pause = 1.5)
+#' }
+#'
+#' @importFrom dplyr arrange mutate lag filter group_by summarise first n bind_rows
+#' @importFrom rlang sym
+#' @importFrom stringr str_count str_detect fixed
+#' @export
+collapse_turns_preserving_overlaps <- function(transcript_df,
+                                               max_pause = 1.5,
+                                               speaker_col = "speaker",
+                                               text_col = "text",
+                                               start_col = "time.s",
+                                               stop_col = "time.e") {
+
+  # Step 1: Sort by start time
+  df <- transcript_df %>%
+    dplyr::arrange(!!rlang::sym(start_col)) %>%
+    dplyr::mutate(
+      original_turn_id = dplyr::row_number(),
+      pause_before = !!rlang::sym(start_col) - dplyr::lag(!!rlang::sym(stop_col), default = 0)
+    )
+
+  # Step 2: Process each speaker separately (collapse short pauses)
+  collapsed_list <- list()
+
+  for (spk in unique(df[[speaker_col]])) {
+    speaker_turns <- df %>%
+      dplyr::filter(!!rlang::sym(speaker_col) == spk) %>%
+      dplyr::arrange(!!rlang::sym(start_col))
+
+    if (nrow(speaker_turns) == 0) next
+
+    # Identify which turns to collapse based on pause
+    turn_groups <- vector("integer", nrow(speaker_turns))
+    current_group <- 1
+    turn_groups[1] <- current_group
+
+    for (i in 2:nrow(speaker_turns)) {
+      pause <- speaker_turns[[start_col]][i] - speaker_turns[[stop_col]][i-1]
+
+      if (pause < max_pause) {
+        turn_groups[i] <- current_group
+      } else {
+        current_group <- current_group + 1
+        turn_groups[i] <- current_group
+      }
+    }
+
+    speaker_turns$turn_group <- turn_groups
+
+    # Collapse turns within each group
+    collapsed_speaker <- speaker_turns %>%
+      dplyr::group_by(turn_group) %>%
+      dplyr::summarise(
+        speaker = dplyr::first(!!rlang::sym(speaker_col)),
+        start = min(!!rlang::sym(start_col)),
+        stop = max(!!rlang::sym(stop_col)),
+        utterance = paste(!!rlang::sym(text_col), collapse = " "),
+        n_utterances_merged = dplyr::n(),
+        .groups = "drop"
+      )
+
+    collapsed_list[[spk]] <- collapsed_speaker
+  }
+
+  # Step 3: Combine all speakers and re-sort by time
+  # BUT DON'T join consecutive turns from same speaker yet!
+  final_df <- dplyr::bind_rows(collapsed_list) %>%
+    dplyr::arrange(start) %>%
+    dplyr::mutate(
+      duration = stop - start,
+      pause = start - dplyr::lag(stop, default = 0),
+      n_words = stringr::str_count(utterance, "\\S+"),
+      n_questions = stringr::str_count(utterance, stringr::fixed("?")),
+      ends_with_question = stringr::str_detect(utterance, "\\?\\s*$")
+    )
+
+  return(final_df)
+}
+
