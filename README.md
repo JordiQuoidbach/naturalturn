@@ -20,3 +20,7 @@ See the [package README](naturalturn/README.md) for full documentation and usage
 
 This is an R implementation of the Python companion repository: https://github.com/betterup/natural-turn-transcription
 
+## Authors
+
+Jordi Quoidbach & Gus Cooney
+

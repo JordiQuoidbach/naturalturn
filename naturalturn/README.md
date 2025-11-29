@@ -191,6 +191,6 @@ https://github.com/betterup/natural-turn-transcription
 
 MIT
 
-## Author
+## Authors
 
-Jordi Quoidbach
+Jordi Quoidbach & Gus Cooney
