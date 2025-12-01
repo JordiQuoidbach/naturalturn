@@ -24,7 +24,7 @@ previous turn for current turn to be an interruption. Default: 1.0.}
 Data frame in wide format with one row per primary turn. Columns include:
   \itemize{
     \item Primary speaker columns: \code{speaker}, \code{start}, \code{stop},
-      \code{duration}, \code{utterance}, \code{responseTime}, \code{interruption},
+      \code{duration}, \code{utterance}, \code{response_time}, \code{interruption},
       \code{n_words_speaker}, etc.
     \item Listener overlap columns: \code{n_listener_turns}, \code{overlap_speaker},
       \code{utterance_listener} (concatenated), and \code{*_listener_list} columns

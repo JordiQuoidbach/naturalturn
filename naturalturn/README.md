@@ -39,10 +39,13 @@ transcript <- data.frame(
   stop = c(1.0, 2.0, 2.5, 4.0, 4.2)
 )
 
-# Process with default column names (speaker, text, start, stop)
-result <- natural_turn_transcript(transcript)
+# Process with default column names - wide format (default)
+result_wide <- natural_turn_transcript(transcript)
 
-# Or specify your column names
+# Process in long format (one row per turn, including secondary/backchannels)
+result_long <- natural_turn_transcript(transcript, output_format = "long")
+
+# Or specify all parameters
 result <- natural_turn_transcript(
   transcript,
   speaker_id_col = "speaker",
@@ -53,7 +56,8 @@ result <- natural_turn_transcript(
   backchannel_word_max = 3,
   backchannel_proportion = 0.5,
   interruption_duration_min = 6.0,
-  interruption_lag_duration_min = 1.0
+  interruption_lag_duration_min = 1.0,
+  output_format = "wide"  # or "long"
 )
 ```
 
@@ -65,14 +69,22 @@ Use `natural_turn_batch()` to process a data frame with multiple conversations:
 # Load your data
 transcripts <- read.csv("transcripts.csv")
 
-# Process all conversations (required: conversation_id_col and speaker_id_col)
-result <- natural_turn_batch(
+# Process all conversations - wide format (default)
+result_wide <- natural_turn_batch(
   transcripts,
   conversation_id_col = "conversation_id",
   speaker_id_col = "speaker",
   text_col = "text",
   start_col = "start",
   stop_col = "stop"
+)
+
+# Process all conversations - long format
+result_long <- natural_turn_batch(
+  transcripts,
+  conversation_id_col = "conversation_id",
+  speaker_id_col = "speaker",
+  output_format = "long"
 )
 
 # Optionally save to CSV
@@ -117,10 +129,19 @@ result <- natural_turn_batch(
 | `start_col` | "start" | Column containing start times (in seconds) |
 | `stop_col` | "stop" | Column containing end times (in seconds) |
 | `output_csv` | NULL | Optional path to save results as CSV (batch only) |
+| `output_format` | "wide" | Output format: "wide" (one row per primary turn) or "long" (one row per turn) |
 
-## Output Format
+## Output Formats
 
-The output is a data frame in **wide format** with one row per primary turn:
+Choose between **wide** and **long** output formats depending on your analysis needs:
+
+- **Wide format** (`output_format = "wide"`): One row per primary turn, with listener/overlap information in columns. Best for analyzing speaker turns, response times, and interruptions.
+
+- **Long format** (`output_format = "long"`): One row per turn (both primary and secondary/backchannel). Best for utterance-level analysis including all backchannels and overlapping speech.
+
+### Wide Format (default)
+
+One row per primary turn, with listener overlaps in columns:
 
 ### Primary Speaker Columns
 
@@ -131,7 +152,7 @@ The output is a data frame in **wide format** with one row per primary turn:
 | `stop` | Turn end time (seconds) |
 | `duration` | Turn duration (seconds) |
 | `utterance` | The spoken text |
-| `responseTime` | Time gap before this turn (can be negative for overlaps) |
+| `response_time` | Time gap before this turn (can be negative for overlaps) |
 | `interruption` | 1 if this turn interrupts the previous speaker, 0 otherwise |
 | `n_words_speaker` | Word count |
 | `n_questions_speaker` | Number of questions (?) |
@@ -158,6 +179,29 @@ The output is a data frame in **wide format** with one row per primary turn:
 | `utterance_type_listener_list` | List of types ("backchannel" or "secondary") |
 | `start_listener_list`, `stop_listener_list` | Timing of listener turns |
 | `duration_listener_list` | Durations of listener turns |
+
+### Long Format
+
+One row per turn (both primary and secondary/backchannel):
+
+| Column | Description |
+|--------|-------------|
+| `turn_id` | Turn ID (secondary turns share ID with their overlapping primary turn) |
+| `speaker` | Speaker identifier |
+| `start` | Turn start time (seconds) |
+| `stop` | Turn end time (seconds) |
+| `duration` | Turn duration (seconds) |
+| `utterance` | The spoken text |
+| `utterance_type` | "primary", "secondary", or "backchannel" |
+| `is_primary` | TRUE for primary turns, FALSE for secondary/backchannel |
+| `response_time` | Time gap before this turn (can be negative for overlaps) |
+| `n_words` | Word count |
+| `n_questions` | Number of questions (?) |
+| `ends_with_question` | TRUE if turn ends with a question |
+| `n_utterances_merged` | Number of original segments merged |
+| `n_segments` | Number of speech segments in this turn |
+| `n_long_pauses` | Number of pauses ≥ `max_pause` within the turn |
+| `internal_pauses` | List of all internal pause durations |
 
 ## Backchannel Detection
 

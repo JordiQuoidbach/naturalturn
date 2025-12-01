@@ -8,8 +8,7 @@
 #'
 #' Main function implementing the NaturalTurn algorithm. Collapses short pauses
 #' within the same speaker, classifies turns as primary/secondary/backchannel,
-#' and outputs data in wide format with one row per primary turn and listener
-#' overlaps in columns.
+#' and outputs data in either wide or long format.
 #'
 #' @param transcript_df Data frame with transcript data. Must contain columns
 #'   for speaker, text, start time, and stop time.
@@ -27,9 +26,23 @@
 #'   considered an interruption. Default: 6.0.
 #' @param interruption_lag_duration_min Minimum duration (seconds) of the
 #'   previous turn for current turn to be an interruption. Default: 1.0.
+#' @param output_format Character string specifying output format. Either
+#'   \code{"wide"} (default) for one row per primary turn with listener overlaps
+#'   in columns, or \code{"long"} for one row per turn (both primary and
+#'   secondary/backchannel turns).
 #'
-#' @return Data frame in wide format with one row per primary turn. See
-#'   \code{\link{pivot_to_wide_format}} for column descriptions.
+#' @return Data frame in the specified format:
+#'   \itemize{
+#'     \item \strong{Wide format} (\code{output_format = "wide"}): One row per
+#'       primary turn with listener overlaps in columns. See
+#'       \code{\link{pivot_to_wide_format}} for column descriptions.
+#'     \item \strong{Long format} (\code{output_format = "long"}): One row per
+#'       turn with columns: \code{speaker}, \code{start}, \code{stop},
+#'       \code{utterance}, \code{duration}, \code{response_time}, \code{n_words},
+#'       \code{n_questions}, \code{ends_with_question}, \code{n_utterances_merged},
+#'       \code{is_primary}, \code{utterance_type} (primary/secondary/backchannel),
+#'       \code{turn_id}, \code{n_segments}, \code{n_long_pauses}, \code{internal_pauses}.
+#'   }
 #'
 #' @details This function implements the NaturalTurn algorithm by Cooney &
 #'   Reece (2025). The algorithm:
@@ -68,8 +81,11 @@
 #'   stop = c(1.0, 2.0, 2.5, 4.0, 4.2)
 #' )
 #'
-#' # Process transcript with default column names
+#' # Process transcript - wide format (default)
 #' wide_result <- natural_turn_transcript(transcript)
+#'
+#' # Process transcript - long format (one row per turn)
+#' long_result <- natural_turn_transcript(transcript, output_format = "long")
 #'
 #' # Or specify custom column names
 #' wide_result <- natural_turn_transcript(
@@ -92,12 +108,15 @@ natural_turn_transcript <- function(transcript_df,
                                     backchannel_word_max = 3,
                                     backchannel_proportion = 0.5,
                                     interruption_duration_min = 6.0,
-                                    interruption_lag_duration_min = 1.0) {
+                                    interruption_lag_duration_min = 1.0,
+                                    output_format = c("wide", "long")) {
 
   # Input validation
   if (!is.data.frame(transcript_df)) {
     stop("transcript_df must be a data frame")
   }
+  
+  output_format <- match.arg(output_format)
   
   required_cols <- c(speaker_id_col, text_col, start_col, stop_col)
   missing_cols <- setdiff(required_cols, names(transcript_df))
@@ -205,7 +224,36 @@ natural_turn_transcript <- function(transcript_df,
   # Step 3: Assign turn IDs
   grouped_df <- assign_wide_turn_ids(final_df)
 
-  # Step 4: Pivot to wide format
+  # Step 4: Return in requested format
+
+  if (output_format == "long") {
+    # Long format: one row per turn (both primary and secondary)
+    # Clean up and arrange output columns
+    long_df <- grouped_df %>%
+      dplyr::arrange(start) %>%
+      dplyr::select(
+        turn_id,
+        speaker,
+        start,
+        stop,
+        duration,
+        utterance,
+        utterance_type,
+        is_primary,
+        response_time = pause,  # Time gap before this turn
+        n_words,
+        n_questions,
+        ends_with_question,
+        n_utterances_merged,
+        n_segments,
+        n_long_pauses,
+        internal_pauses,
+        dplyr::any_of(names(grouped_df)[grepl("^internal_pause_", names(grouped_df))])
+      )
+    return(long_df)
+  }
+
+  # Wide format: one row per primary turn with listener overlaps in columns
   wide_df <- pivot_to_wide_format(grouped_df,
                                   interruption_duration_min = interruption_duration_min,
                                   interruption_lag_duration_min = interruption_lag_duration_min)

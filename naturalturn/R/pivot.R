@@ -20,7 +20,7 @@
 #' @return Data frame in wide format with one row per primary turn. Columns include:
 #'   \itemize{
 #'     \item Primary speaker columns: \code{speaker}, \code{start}, \code{stop},
-#'       \code{duration}, \code{utterance}, \code{responseTime}, \code{interruption},
+#'       \code{duration}, \code{utterance}, \code{response_time}, \code{interruption},
 #'       \code{n_words_speaker}, etc.
 #'     \item Listener overlap columns: \code{n_listener_turns}, \code{overlap_speaker},
 #'       \code{utterance_listener} (concatenated), and \code{*_listener_list} columns
@@ -159,7 +159,7 @@ pivot_to_wide_format <- function(df,
       stop,
       duration,
       utterance,
-      responseTime = pause,  # Time gap before this turn (response time)
+      response_time = pause,  # Time gap before this turn
       interruption,  # Flag: 1 if this turn interrupts the previous turn (Farley 2008)
       n_words_speaker = n_words,
       n_questions_speaker = n_questions,

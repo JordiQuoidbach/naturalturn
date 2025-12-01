@@ -30,9 +30,19 @@
 #'   considered an interruption. Default: 6.0.
 #' @param interruption_lag_duration_min Minimum duration (seconds) of the
 #'   previous turn for current turn to be an interruption. Default: 1.0.
+#' @param output_format Character string specifying output format. Either
+#'   \code{"wide"} (default) for one row per primary turn with listener overlaps
+#'   in columns, or \code{"long"} for one row per turn (both primary and
+#'   secondary/backchannel turns).
 #'
-#' @return Data frame with processed turns for all conversations. Also saves
-#'   results to CSV (and RDS) if \code{output_csv} is provided.
+#' @return Data frame with processed turns for all conversations in the specified
+#'   format. Also saves results to CSV (and RDS) if \code{output_csv} is provided.
+#'   \itemize{
+#'     \item \strong{Wide format}: One row per primary turn with listener overlaps
+#'       in columns. Good for analyzing speaker turns and their responses.
+#'     \item \strong{Long format}: One row per turn (both primary and secondary).
+#'       Good for utterance-level analysis including backchannels and overlaps.
+#'   }
 #'
 #' @details This function:
 #'   \itemize{
@@ -62,7 +72,7 @@
 #' # Load your transcripts data frame
 #' transcripts <- read.csv("transcripts.csv")
 #'
-#' # Process all conversations (required parameters)
+#' # Process all conversations - wide format (default)
 #' result <- natural_turn_batch(
 #'   transcripts,
 #'   conversation_id_col = "conversation_id",
@@ -70,6 +80,14 @@
 #'   text_col = "text",
 #'   start_col = "start",
 #'   stop_col = "stop"
+#' )
+#'
+#' # Process all conversations - long format
+#' result_long <- natural_turn_batch(
+#'   transcripts,
+#'   conversation_id_col = "conversation_id",
+#'   speaker_id_col = "speaker",
+#'   output_format = "long"
 #' )
 #'
 #' # Optionally save to CSV
@@ -96,12 +114,15 @@ natural_turn_batch <- function(transcripts_df,
                                backchannel_word_max = 3,
                                backchannel_proportion = 0.5,
                                interruption_duration_min = 6.0,
-                               interruption_lag_duration_min = 1.0) {
+                               interruption_lag_duration_min = 1.0,
+                               output_format = c("wide", "long")) {
 
   # Input validation
   if (!is.data.frame(transcripts_df)) {
     stop("transcripts_df must be a data frame")
   }
+  
+  output_format <- match.arg(output_format)
   
   if (missing(conversation_id_col)) {
     stop("'conversation_id_col' is required. Specify the column name that identifies different conversations.")
@@ -149,7 +170,7 @@ natural_turn_batch <- function(transcripts_df,
     tryCatch({
       original_turns <- nrow(conv_data)
 
-      wide_result <- natural_turn_transcript(
+      result <- natural_turn_transcript(
         conv_data,
         speaker_id_col = speaker_id_col,
         text_col = text_col,
@@ -159,15 +180,25 @@ natural_turn_batch <- function(transcripts_df,
         backchannel_word_max = backchannel_word_max,
         backchannel_proportion = backchannel_proportion,
         interruption_duration_min = interruption_duration_min,
-        interruption_lag_duration_min = interruption_lag_duration_min
+        interruption_lag_duration_min = interruption_lag_duration_min,
+        output_format = output_format
       )
 
-      primary_turns <- nrow(wide_result)
-      listener_turns <- sum(!is.na(wide_result$utterance_listener))
+      # Calculate summary stats based on output format
+      if (output_format == "wide") {
+        primary_turns <- nrow(result)
+        listener_turns <- sum(!is.na(result$utterance_listener))
+      } else {
+        # Long format: count primary turns and secondary turns
+        primary_turns <- sum(result$is_primary)
+        listener_turns <- sum(!result$is_primary)
+      }
 
-      # Add turn counter
-      wide_result <- wide_result %>%
-        dplyr::mutate(turn_id = dplyr::row_number())
+      # Add turn counter (only for wide format, long format already has turn_id)
+      if (output_format == "wide") {
+        result <- result %>%
+          dplyr::mutate(turn_id = dplyr::row_number())
+      }
 
       # Add metadata columns from original data
       # Some metadata is speaker-level (varies by speaker), some is conversation-level
@@ -183,15 +214,20 @@ natural_turn_batch <- function(transcripts_df,
         dplyr::distinct(!!rlang::sym(speaker_id_col), .keep_all = TRUE)
       
       # Join speaker-level metadata based on speaker
-      wide_result <- wide_result %>%
+      result <- result %>%
         dplyr::left_join(speaker_metadata, by = stats::setNames(speaker_id_col, "speaker"))
 
       if (i <= 5 || i %% 50 == 0) {
-        cat(sprintf("  %d/%d: %d turns -> %d primary turns (%d with overlap)\n",
-                    i, length(conv_ids), original_turns, primary_turns, listener_turns))
+        if (output_format == "wide") {
+          cat(sprintf("  %d/%d: %d turns -> %d primary turns (%d with overlap)\n",
+                      i, length(conv_ids), original_turns, primary_turns, listener_turns))
+        } else {
+          cat(sprintf("  %d/%d: %d turns -> %d primary + %d secondary turns\n",
+                      i, length(conv_ids), original_turns, primary_turns, listener_turns))
+        }
       }
 
-      all_results[[as.character(conv_id)]] <- wide_result
+      all_results[[as.character(conv_id)]] <- result
 
     }, error = function(e) {
       cat(sprintf("  Error processing %s: %s\n", conv_id, e$message))
@@ -201,60 +237,82 @@ natural_turn_batch <- function(transcripts_df,
   # Combine results
   final_df <- dplyr::bind_rows(all_results)
 
-  cat(sprintf("\nCompleted: %d conversations, %s primary turns (%.1f%% with overlap)\n",
-              length(all_results),
-              format(nrow(final_df), big.mark = ","),
-              sum(!is.na(final_df$utterance_listener)) / nrow(final_df) * 100))
+  # Print summary based on output format
+  if (output_format == "wide") {
+    cat(sprintf("\nCompleted: %d conversations, %s primary turns (%.1f%% with overlap)\n",
+                length(all_results),
+                format(nrow(final_df), big.mark = ","),
+                sum(!is.na(final_df$utterance_listener)) / nrow(final_df) * 100))
+  } else {
+    n_primary <- sum(final_df$is_primary)
+    n_secondary <- sum(!final_df$is_primary)
+    cat(sprintf("\nCompleted: %d conversations, %s total turns (%s primary + %s secondary)\n",
+                length(all_results),
+                format(nrow(final_df), big.mark = ","),
+                format(n_primary, big.mark = ","),
+                format(n_secondary, big.mark = ",")))
+  }
 
   # Save results
   if (!is.null(output_csv)) {
     cat(sprintf("Saving to %s...\n", output_csv))
 
     # Convert list columns to JSON-style strings for CSV compatibility
-    final_df_for_csv <- final_df %>%
-      dplyr::mutate(
-        # Convert numeric/character lists to [val1, val2, ...] format
-        utterance_listener_list = sapply(utterance_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(sapply(x, function(v) paste0('"', v, '"')), collapse = ", "), "]")
-        }),
-        utterance_type_listener_list = sapply(utterance_type_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(sapply(x, function(v) paste0('"', v, '"')), collapse = ", "), "]")
-        }),
-        start_listener_list = sapply(start_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(x, collapse = ", "), "]")
-        }),
-        stop_listener_list = sapply(stop_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(x, collapse = ", "), "]")
-        }),
-        duration_listener_list = sapply(duration_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(x, collapse = ", "), "]")
-        }),
-        pause_listener_list = sapply(pause_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(x, collapse = ", "), "]")
-        }),
-        n_words_listener_list = sapply(n_words_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(x, collapse = ", "), "]")
-        }),
-        n_questions_listener_list = sapply(n_questions_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(x, collapse = ", "), "]")
-        }),
-        ends_with_question_listener_list = sapply(ends_with_question_listener_list, function(x) {
-          if (length(x) == 0) return(NA_character_)
-          paste0("[", paste(tolower(x), collapse = ", "), "]")
-        }),
-        internal_pauses = sapply(internal_pauses, function(x) {
-          if (length(x) == 0) return("[]")
-          paste0("[", paste(x, collapse = ", "), "]")
-        })
-      )
+    if (output_format == "wide") {
+      final_df_for_csv <- final_df %>%
+        dplyr::mutate(
+          # Convert numeric/character lists to [val1, val2, ...] format
+          utterance_listener_list = sapply(utterance_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(sapply(x, function(v) paste0('"', v, '"')), collapse = ", "), "]")
+          }),
+          utterance_type_listener_list = sapply(utterance_type_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(sapply(x, function(v) paste0('"', v, '"')), collapse = ", "), "]")
+          }),
+          start_listener_list = sapply(start_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          stop_listener_list = sapply(stop_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          duration_listener_list = sapply(duration_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          pause_listener_list = sapply(pause_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          n_words_listener_list = sapply(n_words_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          n_questions_listener_list = sapply(n_questions_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          ends_with_question_listener_list = sapply(ends_with_question_listener_list, function(x) {
+            if (length(x) == 0) return(NA_character_)
+            paste0("[", paste(tolower(x), collapse = ", "), "]")
+          }),
+          internal_pauses = sapply(internal_pauses, function(x) {
+            if (length(x) == 0) return("[]")
+            paste0("[", paste(x, collapse = ", "), "]")
+          })
+        )
+    } else {
+      # Long format: only internal_pauses needs conversion
+      final_df_for_csv <- final_df %>%
+        dplyr::mutate(
+          internal_pauses = sapply(internal_pauses, function(x) {
+            if (length(x) == 0) return("[]")
+            paste0("[", paste(x, collapse = ", "), "]")
+          })
+        )
+    }
 
     readr::write_csv(final_df_for_csv, output_csv)
 
