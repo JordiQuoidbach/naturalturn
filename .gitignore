@@ -31,9 +31,8 @@ __pycache__/
 transcription/
 data/
 
-# Scripts (not part of package)
-*.R
-!naturalturn/**/*.R
+# Keep package R files
+!R/*.R
 
 # Documentation (keep only package README)
 LISTENER_LISTS_USAGE_GUIDE.md
