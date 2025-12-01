@@ -4,13 +4,13 @@
 # Process multiple conversations from a data frame
 ################################################################################
 
-#' Process Batch of Conversations with NaturalTurn Algorithm
+#' Process Batch of Baseline Transcripts with NaturalTurn Algorithm
 #'
 #' Processes multiple conversations from a data frame, applying the NaturalTurn
 #' algorithm to each conversation separately and combining results.
 #'
-#' @param transcripts_df Data frame containing transcript data for multiple
-#'   conversations.
+#' @param baseline_df Data frame containing baseline transcript data for multiple
+#'   conversations. Typically created by \code{\link{json_to_baseline}}.
 #' @param conversation_id_col Name of column containing conversation identifier
 #'   (e.g., "conversation_id", "session_id"). Required.
 #' @param speaker_id_col Name of column containing speaker identifier
@@ -22,6 +22,9 @@
 #'   results are only returned (not saved to disk). Default: \code{NULL}.
 #' @param max_pause Maximum pause (seconds) between consecutive segments from
 #'   the same speaker to be merged. Default: 1.5.
+#' @param short_pause_threshold Minimum pause duration (seconds) to be considered
+#'   a true pause vs. stop closures. Default: 0.18 (180ms), based on Heldner &
+#'   Edlund (2010). Pauses >= this threshold but < max_pause are "short pauses".
 #' @param backchannel_word_max Maximum word count for backchannel classification.
 #'   Default: 3.
 #' @param backchannel_proportion Minimum proportion of words that must be
@@ -69,57 +72,57 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Load your transcripts data frame
-#' transcripts <- read.csv("transcripts.csv")
+#' # Load baseline transcripts
+#' baselines <- read.csv("baselines.csv")
 #'
 #' # Process all conversations - wide format (default)
-#' result <- natural_turn_batch(
-#'   transcripts,
+#' result <- baseline_to_naturalturn_batch(
+#'   baselines,
 #'   conversation_id_col = "conversation_id",
-#'   speaker_id_col = "speaker",
-#'   text_col = "text",
-#'   start_col = "start",
-#'   stop_col = "stop"
+#'   speaker_id_col = "speaker"
 #' )
 #'
 #' # Process all conversations - long format
-#' result_long <- natural_turn_batch(
-#'   transcripts,
+#' result_long <- baseline_to_naturalturn_batch(
+#'   baselines,
 #'   conversation_id_col = "conversation_id",
 #'   speaker_id_col = "speaker",
 #'   output_format = "long"
 #' )
 #'
-#' # Optionally save to CSV
-#' result <- natural_turn_batch(
-#'   transcripts,
+#' # Save to CSV
+#' result <- baseline_to_naturalturn_batch(
+#'   baselines,
 #'   conversation_id_col = "conversation_id",
 #'   speaker_id_col = "speaker",
-#'   output_csv = "processed_transcripts.csv"
+#'   output_csv = "processed.csv"
 #' )
 #' }
+#'
+#' @seealso \code{\link{json_to_baseline}}, \code{\link{baseline_to_naturalturn}}
 #'
 #' @importFrom dplyr filter pull mutate row_number select distinct left_join coalesce bind_rows first
 #' @importFrom readr write_csv
 #' @importFrom rlang sym
 #' @export
-natural_turn_batch <- function(transcripts_df,
-                               conversation_id_col,
-                               speaker_id_col,
-                               text_col = "text",
-                               start_col = "start",
-                               stop_col = "stop",
-                               output_csv = NULL,
-                               max_pause = 1.5,
-                               backchannel_word_max = 3,
-                               backchannel_proportion = 0.5,
-                               interruption_duration_min = 6.0,
-                               interruption_lag_duration_min = 1.0,
-                               output_format = c("wide", "long")) {
+baseline_to_naturalturn_batch <- function(baseline_df,
+                                          conversation_id_col,
+                                          speaker_id_col,
+                                          text_col = "text",
+                                          start_col = "start",
+                                          stop_col = "stop",
+                                          output_csv = NULL,
+                                          max_pause = 1.5,
+                                          short_pause_threshold = 0.18,
+                                          backchannel_word_max = 3,
+                                          backchannel_proportion = 0.5,
+                                          interruption_duration_min = 6.0,
+                                          interruption_lag_duration_min = 1.0,
+                                          output_format = c("wide", "long")) {
 
   # Input validation
-  if (!is.data.frame(transcripts_df)) {
-    stop("transcripts_df must be a data frame")
+  if (!is.data.frame(baseline_df)) {
+    stop("baseline_df must be a data frame")
   }
   
   output_format <- match.arg(output_format)
@@ -132,7 +135,7 @@ natural_turn_batch <- function(transcripts_df,
     stop("'speaker_id_col' is required. Specify the column name that identifies speakers.")
   }
   
-  df <- transcripts_df
+  df <- baseline_df
 
   # Validate required columns
   required_cols <- c(conversation_id_col, speaker_id_col, text_col, start_col, stop_col)
@@ -170,13 +173,14 @@ natural_turn_batch <- function(transcripts_df,
     tryCatch({
       original_turns <- nrow(conv_data)
 
-      result <- natural_turn_transcript(
+      result <- baseline_to_naturalturn(
         conv_data,
         speaker_id_col = speaker_id_col,
         text_col = text_col,
         start_col = start_col,
         stop_col = stop_col,
         max_pause = max_pause,
+        short_pause_threshold = short_pause_threshold,
         backchannel_word_max = backchannel_word_max,
         backchannel_proportion = backchannel_proportion,
         interruption_duration_min = interruption_duration_min,
@@ -298,16 +302,24 @@ natural_turn_batch <- function(transcripts_df,
             if (length(x) == 0) return(NA_character_)
             paste0("[", paste(tolower(x), collapse = ", "), "]")
           }),
-          internal_pauses = sapply(internal_pauses, function(x) {
+          short_pauses = sapply(short_pauses, function(x) {
+            if (length(x) == 0) return("[]")
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          long_pauses = sapply(long_pauses, function(x) {
             if (length(x) == 0) return("[]")
             paste0("[", paste(x, collapse = ", "), "]")
           })
         )
     } else {
-      # Long format: only internal_pauses needs conversion
+      # Long format: pause list columns need conversion
       final_df_for_csv <- final_df %>%
         dplyr::mutate(
-          internal_pauses = sapply(internal_pauses, function(x) {
+          short_pauses = sapply(short_pauses, function(x) {
+            if (length(x) == 0) return("[]")
+            paste0("[", paste(x, collapse = ", "), "]")
+          }),
+          long_pauses = sapply(long_pauses, function(x) {
             if (length(x) == 0) return("[]")
             paste0("[", paste(x, collapse = ", "), "]")
           })

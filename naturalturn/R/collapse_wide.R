@@ -4,20 +4,24 @@
 # Main function to collapse turns into wide format
 ################################################################################
 
-#' Process Transcript with NaturalTurn Algorithm
+#' Process Baseline Transcript with NaturalTurn Algorithm
 #'
-#' Main function implementing the NaturalTurn algorithm. Collapses short pauses
-#' within the same speaker, classifies turns as primary/secondary/backchannel,
-#' and outputs data in either wide or long format.
+#' Takes a baseline transcript and applies the NaturalTurn algorithm. Collapses
+#' short pauses within the same speaker, classifies turns as primary/secondary/
+#' backchannel, and outputs data in either wide or long format.
 #'
-#' @param transcript_df Data frame with transcript data. Must contain columns
-#'   for speaker, text, start time, and stop time.
+#' @param baseline_df Data frame with baseline transcript data. Must contain
+#'   columns for speaker, text, start time, and stop time. Typically created
+#'   by \code{\link{json_to_baseline}}.
 #' @param speaker_id_col Name of column containing speaker identifier. Default: "speaker".
 #' @param text_col Name of column containing utterance text. Default: "text".
 #' @param start_col Name of column containing start time in seconds. Default: "start".
 #' @param stop_col Name of column containing stop time in seconds. Default: "stop".
 #' @param max_pause Maximum pause (seconds) between consecutive segments from
 #'   the same speaker to be merged into one turn. Default: 1.5.
+#' @param short_pause_threshold Minimum pause duration (seconds) to be considered
+#'   a true pause vs. stop closures. Default: 0.18 (180ms), based on Heldner &
+#'   Edlund (2010). Pauses >= this threshold but < max_pause are "short pauses".
 #' @param backchannel_word_max Maximum word count for backchannel classification.
 #'   Default: 3.
 #' @param backchannel_proportion Minimum proportion of words that must be
@@ -30,6 +34,10 @@
 #'   \code{"wide"} (default) for one row per primary turn with listener overlaps
 #'   in columns, or \code{"long"} for one row per turn (both primary and
 #'   secondary/backchannel turns).
+#' @param output_csv Optional path to save results as CSV file. If provided,
+#'   list columns are automatically converted to JSON-style strings for CSV
+#'   compatibility. If \code{NULL} (default), results are only returned
+#'   (not saved to disk).
 #'
 #' @return Data frame in the specified format:
 #'   \itemize{
@@ -41,7 +49,8 @@
 #'       \code{utterance}, \code{duration}, \code{response_time}, \code{n_words},
 #'       \code{n_questions}, \code{ends_with_question}, \code{n_utterances_merged},
 #'       \code{is_primary}, \code{utterance_type} (primary/secondary/backchannel),
-#'       \code{turn_id}, \code{n_segments}, \code{n_long_pauses}, \code{internal_pauses}.
+#'       \code{turn_id}, \code{n_segments}, \code{n_short_pauses}, \code{n_long_pauses},
+#'       \code{short_pauses}, \code{long_pauses}.
 #'   }
 #'
 #' @details This function implements the NaturalTurn algorithm by Cooney &
@@ -73,66 +82,65 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Example transcript data
+#' # From JSON files
+#' baseline <- json_to_baseline(speaker1_json, speaker2_json)
+#' result <- baseline_to_naturalturn(baseline, output_csv = "result.csv")
+#'
+#' # Process in long format (one row per turn)
+#' result_long <- baseline_to_naturalturn(baseline, output_format = "long")
+#'
+#' # From existing transcript data
 #' transcript <- data.frame(
 #'   speaker = c("A", "A", "B", "A", "B"),
 #'   text = c("Hello", "there", "Hi", "How are you", "Good"),
 #'   start = c(0.0, 1.2, 1.5, 3.0, 3.5),
 #'   stop = c(1.0, 2.0, 2.5, 4.0, 4.2)
 #' )
-#'
-#' # Process transcript - wide format (default)
-#' wide_result <- natural_turn_transcript(transcript)
-#'
-#' # Process transcript - long format (one row per turn)
-#' long_result <- natural_turn_transcript(transcript, output_format = "long")
-#'
-#' # Or specify custom column names
-#' wide_result <- natural_turn_transcript(
-#'   transcript,
-#'   speaker_id_col = "speaker",
-#'   text_col = "text",
-#'   start_col = "start",
-#'   stop_col = "stop"
-#' )
+#' result <- baseline_to_naturalturn(transcript)
 #' }
+#'
+#' @seealso \code{\link{json_to_baseline}}, \code{\link{baseline_to_naturalturn_batch}}
 #'
 #' @importFrom dplyr arrange mutate lag group_by summarise first select any_of
 #' @export
-natural_turn_transcript <- function(transcript_df,
+baseline_to_naturalturn <- function(baseline_df,
                                     speaker_id_col = "speaker",
                                     text_col = "text",
                                     start_col = "start",
                                     stop_col = "stop",
                                     max_pause = 1.5,
+                                    short_pause_threshold = 0.18,
                                     backchannel_word_max = 3,
                                     backchannel_proportion = 0.5,
                                     interruption_duration_min = 6.0,
                                     interruption_lag_duration_min = 1.0,
-                                    output_format = c("wide", "long")) {
+                                    output_format = c("wide", "long"),
+                                    output_csv = NULL) {
 
   # Input validation
-  if (!is.data.frame(transcript_df)) {
-    stop("transcript_df must be a data frame")
+  if (!is.data.frame(baseline_df)) {
+    stop("baseline_df must be a data frame")
   }
   
   output_format <- match.arg(output_format)
   
   required_cols <- c(speaker_id_col, text_col, start_col, stop_col)
-  missing_cols <- setdiff(required_cols, names(transcript_df))
+  missing_cols <- setdiff(required_cols, names(baseline_df))
   if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
   }
   
-  if (nrow(transcript_df) == 0) {
-    warning("transcript_df is empty, returning empty data frame")
+  if (nrow(baseline_df) == 0) {
+    warning("baseline_df is empty, returning empty data frame")
     return(data.frame())
   }
 
   # Step 1: Collapse short pauses (but preserve overlaps)
+  # Short pauses (>= 180ms but < max_pause) are tracked within collapsed segments
   collapsed_df <- collapse_turns_preserving_overlaps(
-    transcript_df,
+    baseline_df,
     max_pause = max_pause,
+    short_pause_threshold = short_pause_threshold,
     speaker_id_col = speaker_id_col,
     text_col = text_col,
     start_col = start_col,
@@ -162,6 +170,8 @@ natural_turn_transcript <- function(transcript_df,
   turn_group_id <- cumsum(!classified_df$is_contiguous_primary)
 
   # Join contiguous primary turns, TRACKING internal pauses
+  # Short pauses (>= 180ms, < max_pause) come from collapsed segments
+  # Long pauses (>= max_pause) come from joining segments here
   final_df <- classified_df %>%
     dplyr::mutate(turn_group_id = turn_group_id) %>%
     dplyr::group_by(turn_group_id) %>%
@@ -179,47 +189,54 @@ natural_turn_transcript <- function(transcript_df,
       n_utterances_merged = sum(n_utterances_merged),
       is_primary = dplyr::first(is_primary),
       utterance_type = dplyr::first(utterance_type),
-      # TRACK INTERNAL PAUSES (pauses between segments within this turn)
-      internal_pauses = if(n() > 1) {
+      # Combine SHORT pauses from all collapsed segments
+      short_pauses = list(unlist(short_pauses)),
+      # TRACK LONG PAUSES (pauses >= max_pause between segments joined here)
+      long_pauses = if(dplyr::n() > 1) {
         # Calculate pause between each consecutive segment
         starts <- start
         stops <- stop
         pauses <- starts[-1] - stops[-length(stops)]
-        list(pauses)
+        list(pauses)  # These are all >= max_pause by definition
       } else {
         list(numeric(0))
       },
-      n_segments = dplyr::n(),  # How many original segments were merged
+      n_segments = dplyr::n(),  # How many segments were joined here
       .groups = "drop"
     ) %>%
     dplyr::arrange(start) %>%
     dplyr::select(-turn_group_id)
 
-  # Step 2.6: Count and extract long pauses (>= max_pause threshold)
+  # Step 2.6: Count short and long pauses
   final_df <- final_df %>%
     dplyr::mutate(
-      # Count pauses meeting or exceeding threshold
-      n_long_pauses = sapply(internal_pauses, function(p) sum(p >= max_pause)),
-
-      # Extract long pauses into separate columns
-      long_pauses_list = lapply(internal_pauses, function(p) p[p >= max_pause])
+      n_short_pauses = sapply(short_pauses, length),
+      n_long_pauses = sapply(long_pauses, length)
     )
 
-  # Create individual pause columns (pause_1, pause_2, etc.)
+  # Create individual long pause columns (long_pause_1, long_pause_2, etc.)
   max_long_pauses <- max(final_df$n_long_pauses, 0)
 
   if (max_long_pauses > 0) {
     for (i in 1:max_long_pauses) {
-      col_name <- paste0("internal_pause_", i)
-      final_df[[col_name]] <- sapply(final_df$long_pauses_list, function(pauses) {
+      col_name <- paste0("long_pause_", i)
+      final_df[[col_name]] <- sapply(final_df$long_pauses, function(pauses) {
         if (length(pauses) >= i) pauses[i] else NA_real_
       })
     }
   }
 
-  # Clean up temporary columns
-  final_df <- final_df %>%
-    dplyr::select(-long_pauses_list)
+  # Create individual short pause columns (short_pause_1, short_pause_2, etc.)
+  max_short_pauses <- max(final_df$n_short_pauses, 0)
+
+  if (max_short_pauses > 0) {
+    for (i in 1:max_short_pauses) {
+      col_name <- paste0("short_pause_", i)
+      final_df[[col_name]] <- sapply(final_df$short_pauses, function(pauses) {
+        if (length(pauses) >= i) pauses[i] else NA_real_
+      })
+    }
+  }
 
   # Step 3: Assign turn IDs
   grouped_df <- assign_wide_turn_ids(final_df)
@@ -246,10 +263,19 @@ natural_turn_transcript <- function(transcript_df,
         ends_with_question,
         n_utterances_merged,
         n_segments,
+        n_short_pauses,
         n_long_pauses,
-        internal_pauses,
-        dplyr::any_of(names(grouped_df)[grepl("^internal_pause_", names(grouped_df))])
+        short_pauses,
+        long_pauses,
+        dplyr::any_of(names(grouped_df)[grepl("^short_pause_", names(grouped_df))]),
+        dplyr::any_of(names(grouped_df)[grepl("^long_pause_", names(grouped_df))])
       )
+    
+    # Save to CSV if output_csv is provided
+    if (!is.null(output_csv)) {
+      save_naturalturn_csv(long_df, output_csv, output_format = "long")
+    }
+    
     return(long_df)
   }
 
@@ -258,6 +284,108 @@ natural_turn_transcript <- function(transcript_df,
                                   interruption_duration_min = interruption_duration_min,
                                   interruption_lag_duration_min = interruption_lag_duration_min)
 
+  # Save to CSV if output_csv is provided
+  if (!is.null(output_csv)) {
+    save_naturalturn_csv(wide_df, output_csv, output_format = "wide")
+  }
+
   return(wide_df)
+}
+
+
+#' Save NaturalTurn Results to CSV
+#'
+#' Helper function to save NaturalTurn results to CSV, converting list columns
+#' to JSON-style strings for compatibility.
+#'
+#' @param df Data frame with NaturalTurn results.
+#' @param output_csv Path to save CSV file.
+#' @param output_format Either "wide" or "long" to determine which list columns to convert.
+#'
+#' @return Invisibly returns the path to the saved CSV file.
+#'
+#' @importFrom readr write_csv
+#' @keywords internal
+save_naturalturn_csv <- function(df, output_csv, output_format = "wide") {
+  
+  # Helper to convert list to JSON-style string
+  list_to_json_string <- function(x, quote_values = FALSE) {
+    sapply(x, function(lst) {
+      if (length(lst) == 0) return(NA_character_)
+      if (quote_values) {
+        paste0("[", paste(sapply(lst, function(v) paste0('"', v, '"')), collapse = ", "), "]")
+      } else {
+        paste0("[", paste(lst, collapse = ", "), "]")
+      }
+    })
+  }
+  
+  # Helper for boolean lists
+  list_to_json_bool <- function(x) {
+    sapply(x, function(lst) {
+      if (length(lst) == 0) return(NA_character_)
+      paste0("[", paste(tolower(as.character(lst)), collapse = ", "), "]")
+    })
+  }
+  
+  # Convert list columns based on output format
+  df_for_csv <- df
+  
+  if (output_format == "wide") {
+    # Wide format list columns
+    if ("utterance_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$utterance_listener_list <- list_to_json_string(df_for_csv$utterance_listener_list, quote_values = TRUE)
+    }
+    if ("utterance_type_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$utterance_type_listener_list <- list_to_json_string(df_for_csv$utterance_type_listener_list, quote_values = TRUE)
+    }
+    if ("start_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$start_listener_list <- list_to_json_string(df_for_csv$start_listener_list)
+    }
+    if ("stop_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$stop_listener_list <- list_to_json_string(df_for_csv$stop_listener_list)
+    }
+    if ("duration_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$duration_listener_list <- list_to_json_string(df_for_csv$duration_listener_list)
+    }
+    if ("pause_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$pause_listener_list <- list_to_json_string(df_for_csv$pause_listener_list)
+    }
+    if ("n_words_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$n_words_listener_list <- list_to_json_string(df_for_csv$n_words_listener_list)
+    }
+    if ("n_questions_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$n_questions_listener_list <- list_to_json_string(df_for_csv$n_questions_listener_list)
+    }
+    if ("ends_with_question_listener_list" %in% names(df_for_csv)) {
+      df_for_csv$ends_with_question_listener_list <- list_to_json_bool(df_for_csv$ends_with_question_listener_list)
+    }
+  }
+  
+  # Common list columns (both formats)
+  if ("short_pauses" %in% names(df_for_csv)) {
+    df_for_csv$short_pauses <- sapply(df_for_csv$short_pauses, function(x) {
+      if (length(x) == 0) return("[]")
+      paste0("[", paste(x, collapse = ", "), "]")
+    })
+  }
+  if ("long_pauses" %in% names(df_for_csv)) {
+    df_for_csv$long_pauses <- sapply(df_for_csv$long_pauses, function(x) {
+      if (length(x) == 0) return("[]")
+      paste0("[", paste(x, collapse = ", "), "]")
+    })
+  }
+  
+  # Write CSV
+  readr::write_csv(df_for_csv, output_csv)
+  
+  # Also save RDS for native R usage
+  rds_path <- sub("\\.csv$", ".rds", output_csv)
+  saveRDS(df, rds_path)
+  
+  message(sprintf("Saved CSV: %s", output_csv))
+  message(sprintf("Saved RDS: %s (use readRDS() to preserve list columns)", rds_path))
+  
+  invisible(output_csv)
 }
 

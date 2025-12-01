@@ -15,6 +15,9 @@
 #'   for speaker, text, start time, and stop time.
 #' @param max_pause Maximum pause (in seconds) between consecutive segments from
 #'   the same speaker to be merged into one turn. Default: 1.5 seconds.
+#' @param short_pause_threshold Minimum pause duration (in seconds) to be
+#'   considered a true pause (vs. stop closures). Default: 0.18 (180ms), based
+#'   on Heldner & Edlund (2010).
 #' @param speaker_id_col Name of column containing speaker identifier. Default: "speaker".
 #' @param text_col Name of column containing utterance text. Default: "text".
 #' @param start_col Name of column containing start time in seconds. Default: "start".
@@ -27,6 +30,8 @@
 #'     \item \code{stop}: Stop time of turn
 #'     \item \code{utterance}: Concatenated text from merged segments
 #'     \item \code{n_utterances_merged}: Number of original segments merged
+#'     \item \code{short_pauses}: List of short pauses (>= 180ms, < max_pause)
+#'       within the collapsed turn
 #'     \item \code{duration}: Turn duration (stop - start)
 #'     \item \code{pause}: Pause before this turn (gap from previous turn)
 #'     \item \code{n_words}: Word count
@@ -38,8 +43,17 @@
 #'   of consecutive segments with pauses < \code{max_pause} and merging them.
 #'   Overlaps between different speakers are preserved (not collapsed).
 #'
+#'   Short pauses (>= \code{short_pause_threshold} but < \code{max_pause}) are
+#'   tracked separately from long pauses. The 180ms threshold distinguishes true
+#'   pauses from stop closures (brief airflow blockages for consonants), per
+#'   Heldner & Edlund (2010).
+#'
 #'   This is part of the NaturalTurn algorithm implementation. See
 #'   \code{\link{natural_turn_transcript}} for the complete algorithm.
+#'
+#' @references
+#'   Heldner, M., & Edlund, J. (2010). Pauses, gaps and overlaps in conversations.
+#'   \emph{Journal of Phonetics}, 38(4), 555-568.
 #'
 #' @examples
 #' \dontrun{
@@ -61,6 +75,7 @@
 #' @keywords internal
 collapse_turns_preserving_overlaps <- function(transcript_df,
                                                max_pause = 1.5,
+                                               short_pause_threshold = 0.18,
                                                speaker_id_col = "speaker",
                                                text_col = "text",
                                                start_col = "start",
@@ -102,7 +117,7 @@ collapse_turns_preserving_overlaps <- function(transcript_df,
 
     speaker_turns$turn_group <- turn_groups
 
-    # Collapse turns within each group
+    # Collapse turns within each group, tracking short pauses
     collapsed_speaker <- speaker_turns %>%
       dplyr::group_by(turn_group) %>%
       dplyr::summarise(
@@ -111,6 +126,16 @@ collapse_turns_preserving_overlaps <- function(transcript_df,
         stop = max(!!rlang::sym(stop_col)),
         utterance = paste(!!rlang::sym(text_col), collapse = " "),
         n_utterances_merged = dplyr::n(),
+        # Track SHORT pauses (>= 180ms but < max_pause) within collapsed segments
+        short_pauses = if(dplyr::n() > 1) {
+          starts <- !!rlang::sym(start_col)
+          stops <- !!rlang::sym(stop_col)
+          pauses <- starts[-1] - stops[-length(stops)]
+          # Filter to only include pauses >= short_pause_threshold
+          list(pauses[pauses >= short_pause_threshold])
+        } else {
+          list(numeric(0))
+        },
         .groups = "drop"
       )
 

@@ -51,7 +51,8 @@ pivot_to_wide_format <- function(df,
                                  interruption_lag_duration_min = 1.0) {
 
   # Identify pause columns
-  pause_cols <- names(df)[grepl("^internal_pause_", names(df))]
+  short_pause_cols <- names(df)[grepl("^short_pause_", names(df))]
+  long_pause_cols <- names(df)[grepl("^long_pause_", names(df))]
 
   # Create primary turns dataframe
   primary_df <- df %>%
@@ -70,9 +71,12 @@ pivot_to_wide_format <- function(df,
       ends_with_question,
       n_utterances_merged,
       n_segments,
+      n_short_pauses,
       n_long_pauses,
-      internal_pauses,
-      dplyr::any_of(pause_cols)  # Include all internal_pause_* columns
+      short_pauses,
+      long_pauses,
+      dplyr::any_of(short_pause_cols),
+      dplyr::any_of(long_pause_cols)
     )
 
   # Create secondary turns dataframe (if any exist)
@@ -125,7 +129,8 @@ pivot_to_wide_format <- function(df,
 
   # Rename and select columns to match Python format
   # Keep pause tracking columns
-  pause_cols_in_df <- names(wide_df)[grepl("^internal_pause_", names(wide_df))]
+  short_pause_cols_in_df <- names(wide_df)[grepl("^short_pause_", names(wide_df))]
+  long_pause_cols_in_df <- names(wide_df)[grepl("^long_pause_", names(wide_df))]
 
   wide_df <- wide_df %>%
     dplyr::arrange(start) %>%
@@ -167,10 +172,15 @@ pivot_to_wide_format <- function(df,
       n_utterances_merged_speaker = n_utterances_merged,
 
       # Pause tracking columns (primary turn internal structure)
+      # Short pauses: >= 180ms but < max_pause (within collapsed segments)
+      # Long pauses: >= max_pause (between segments that weren't collapsed)
       n_segments,
+      n_short_pauses,
       n_long_pauses,
-      internal_pauses,
-      dplyr::any_of(pause_cols_in_df),
+      short_pauses,
+      long_pauses,
+      dplyr::any_of(short_pause_cols_in_df),
+      dplyr::any_of(long_pause_cols_in_df),
 
       # Listener overlap information
       n_listener_turns,
